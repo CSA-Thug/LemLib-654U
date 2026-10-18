@@ -5,18 +5,24 @@
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 
 // motor groups
-pros::MotorGroup leftMotors({-2, -3, -10},
-                            pros::MotorGearset::blue); // left motor group - ports 3 (reversed), 4, 5 (reversed)
-pros::MotorGroup rightMotors({-11, -12, -20}, pros::MotorGearset::blue); // right motor group - ports 6, 7, 9 (reversed)
+pros::Motor left_blue_1(-3, pros::MotorGearset::blue);
+pros::Motor left_blue_2(-10, pros::MotorGearset::blue);
+pros::Motor right_blue_1(-12, pros::MotorGearset::blue);
+pros::Motor right_blue_2(-20, pros::MotorGearset::blue);
 
-// Inertial Sensor on port 10
-pros::Imu imu(10);
+pros::Motor left_green(-2, pros::MotorGearset::green);
+pros::Motor right_green(-11, pros::MotorGearset::green);
+
+pros::MotorGroup leftMotors({left_blue_1, left_blue_2, left_green}); 
+pros::MotorGroup rightMotors({right_blue_1, right_blue_2, right_green}); 
+// Inertial Sensor on port 15
+pros::Imu imu(15);
 
 // tracking wheels
 // horizontal tracking wheel encoder. Rotation sensor, port 20, not reversed
-pros::Rotation horizontalEnc(20);
+pros::Rotation horizontalEnc(6);
 // vertical tracking wheel encoder. Rotation sensor, port 11, reversed
-pros::Rotation verticalEnc(-11);
+pros::Rotation verticalEnc(5);
 // horizontal tracking wheel. 2.75" diameter, 5.75" offset, back of the robot (negative)
 lemlib::TrackingWheel horizontal(&horizontalEnc, lemlib::Omniwheel::NEW_275, -5.75);
 // vertical tracking wheel. 2.75" diameter, 2.5" offset, left of the robot (negative)
@@ -26,8 +32,8 @@ lemlib::TrackingWheel vertical(&verticalEnc, lemlib::Omniwheel::NEW_275, -2.5);
 lemlib::Drivetrain drivetrain(&leftMotors, // left motor group
                               &rightMotors, // right motor group
                               14, // 10 inch track width
-                              lemlib::Omniwheel::NEW_4, // using new 4" omnis
-                              600, // drivetrain rpm is 360
+                              lemlib::Omniwheel::NEW_275, // using new 2.75" omnis
+                              600, // drivetrain rpm is 600
                               6 // horizontal drift is 2. If we had traction wheels, it would have been 8
 );
 
