@@ -13,10 +13,11 @@ pros::Motor right_blue_2(-20, pros::MotorGearset::blue);
 pros::Motor left_green(-2, pros::MotorGearset::green);
 pros::Motor right_green(-11, pros::MotorGearset::green);
 
-pros::MotorGroup leftMotors({left_blue_1, left_blue_2, left_green}); 
-pros::MotorGroup rightMotors({right_blue_1, right_blue_2, right_green}); 
+pros::MotorGroup leftMotors({-2, -3, -10});
+pros::MotorGroup rightMotors({-11, -12, -20});
 // Inertial Sensor on port 15
 pros::Imu imu(15);
+
 
 // tracking wheels
 // horizontal tracking wheel encoder. Rotation sensor, port 20, not reversed
