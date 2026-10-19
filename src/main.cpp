@@ -13,7 +13,7 @@ pros::Motor right_blue_2(-20, pros::MotorGearset::blue);
 pros::Motor left_green(-2, pros::MotorGearset::green);
 pros::Motor right_green(-11, pros::MotorGearset::green);
 
-pros::MotorGroup leftMotors({-2, -3, -10});
+pros::MotorGroup leftMotors({2, 3, 10});
 pros::MotorGroup rightMotors({-11, -12, -20});
 // Inertial Sensor on port 15
 pros::Imu imu(15);
@@ -177,7 +177,7 @@ void opcontrol() {
         int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
         int rightX = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
         // move the chassis with curvature drive
-        chassis.arcade(leftY, rightX);
+        chassis.arcade(rightX, leftY);
         // delay to save resources
         pros::delay(10);
     }
