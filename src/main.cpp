@@ -34,10 +34,10 @@ lemlib::TrackingWheel vertical(&verticalEnc, lemlib::Omniwheel::NEW_275, -2.5);
 // drivetrain settings
 lemlib::Drivetrain drivetrain(&leftMotors, // left motor group
                               &rightMotors, // right motor group
-                              14, // 10 inch track width
+                              14, // NEED TO REMEASURE!
                               lemlib::Omniwheel::NEW_275, // using new 2.75" omnis
-                              600, // drivetrain rpm is 600
-                              6 // horizontal drift is 2. If we had traction wheels, it would have been 8
+                              600, // drivetrain rpm is 600 (The drivetrain is at this RPM but the green motors should be geared to 200)
+                              6 // horizontal drift is 2. If we had traction wheels, it would have been 8 (THIS SHOULD BE CHECKED)
 );
 
 // lateral motion controller
@@ -139,7 +139,8 @@ ASSET(example_txt); // '.' replaced with "_" to make c++ happy
  *
  * This is an example autonomous routine which demonstrates a lot of the features LemLib has to offer
  */
-void autonomous() {
+void autonomous() 
+{
     // Move to x: 20 and y: 15, and face heading 90. Timeout set to 4000 ms
     chassis.moveToPose(20, 15, 90, 4000);
     // Move to x: 0 and y: 0 and face heading 270, going backwards. Timeout set to 4000ms
@@ -171,7 +172,8 @@ void autonomous() {
 /**
  * Runs in driver control
  */
-void opcontrol() {
+void opcontrol() 
+{
     // controller
     // loop to continuously update motors
     while (true) {
