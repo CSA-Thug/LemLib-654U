@@ -13,6 +13,8 @@ pros::Motor right_blue_2(-20, pros::MotorGearset::blue);
 pros::Motor left_green(-2, pros::MotorGearset::green);
 pros::Motor right_green(-11, pros::MotorGearset::green);
 
+pros::Motor intake(13);
+
 pros::MotorGroup leftMotors({2, 3, 10});
 pros::MotorGroup rightMotors({-11, -12, -20});
 // Inertial Sensor on port 15
@@ -174,10 +176,18 @@ void opcontrol() {
     // loop to continuously update motors
     while (true) {
         // get joystick positions
-        int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
-        int rightX = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
+        int leftX = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
+        int rightY = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
         // move the chassis with curvature drive
-        chassis.arcade(rightX, leftY);
+        //chassis.arcade(-rightY, -leftX);//works
+        chassis.arcade(-leftX, -rightY); //proper
+        int intakePower = 0;
+        if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)) {
+            intakePower = 127;
+        } else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L2)) {
+            intakePower = -127;
+        }
+        intake.move(intakePower);
         // delay to save resources
         pros::delay(10);
     }
