@@ -13,9 +13,9 @@ pros::Motor right_blue_2(-20, pros::MotorGearset::blue);
 pros::Motor left_green(-2, pros::MotorGearset::green);
 pros::Motor right_green(-11, pros::MotorGearset::green);
 
-pros::Motor intake(13);
-pros::Motor cascadeLeft(8);
-pros::Motor cascadeRight(19);
+pros::Motor intake(13, pros::MotorGearset::green);
+pros::Motor cascadeLeft(8, pros::MotorGearset::blue);
+pros::Motor cascadeRight(19, pros::MotorGearset::blue);
 
 pros::MotorGroup leftMotors({2, 3, 10});
 pros::MotorGroup rightMotors({-11, -12, -20});
