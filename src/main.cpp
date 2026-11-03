@@ -132,7 +132,10 @@ void disabled() {}
 /**
  * runs after initialize if the robot is connected to field control
  */
-void competition_initialize() {}
+void competition_initialize() 
+{
+  
+}
 
 // get a path used for pure pursuit
 // this needs to be put outside a function
@@ -143,7 +146,8 @@ ASSET(example_txt); // '.' replaced with "_" to make c++ happy
  *
  * This is an example autonomous routine which demonstrates a lot of the features LemLib has to offer
  */
-void autonomous() {
+void autonomous() 
+{
     // Move to x: 20 and y: 15, and face heading 90. Timeout set to 4000 ms
     chassis.moveToPose(20, 15, 90, 4000);  
 
@@ -159,9 +163,8 @@ void opcontrol() {
         // get joystick positions
         int leftX = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
         int rightY = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
-        // move the chassis with curvature drive
-        //chassis.arcade(-rightY, -leftX);//works
-        chassis.arcade(-leftX, -rightY); //proper
+        // bind motors to joystick
+        chassis.arcade(-leftX, -rightY); 
         int intakePower = 0;
         if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)) {
             intakePower = 127;
@@ -169,7 +172,9 @@ void opcontrol() {
             intakePower = -127;
         }
         intake.move(intakePower);
-
+        
+        
+      
         int cascadePower = 0;
         if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1) &&
             !controller.get_digital(pros::E_CONTROLLER_DIGITAL_L1)) {
@@ -181,6 +186,7 @@ void opcontrol() {
         cascadeLeft.move(cascadePower);
         cascadeRight.move(cascadePower);
 
+        
         // delay to save resources
         pros::delay(10);
     }
