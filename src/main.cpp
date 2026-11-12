@@ -99,6 +99,9 @@ void initialize() {
     pros::lcd::initialize(); // initialize brain screen
     chassis.calibrate(); // calibrate sensors
 
+    ratchetClaw.set_encoder_units(pros::E_MOTOR_ENCODER_DEGREES);
+    ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
+    
     // the default rate is 50. however, if you need to change the rate, you
     // can do the following.
     // lemlib::bufferedStdout().setRate(...);
@@ -150,29 +153,28 @@ void autonomous()
 {
     // Move to x: 20 and y: 15, and face heading 90. Timeout set to 4000 ms
     chassis.moveToPose(20, 15, 90, 4000);  
-
 }
 
 // Voltage values in PROS range from -127 to 127
 const int CLAW_CLOSE_POWER = 108;    // ~85% of 127
 const int CLAW_RELEASE_POWER = 127;  // 100% of 127
-const int CLAW_HOLD_POWER = 19;      // ~15% of 127
 
 // Timing & Position Thresholds
-const int RELEASE_DURATION_MS = 250; 
+const uint32_t RELEASE_DURATION_MS = 250; 
 const double MAX_CLOSE_DEGREES = 360.0; 
 
 enum ClawState { OPEN, CLOSING, LOCKED, RELEASING };
 ClawState currentClawState = OPEN;
-int releaseTimer = 0;
+uint32_t releaseStartTime = 0;
 
-void updateRatchetClaw(bool closeButton, bool releaseButton) 
+void updateRatchetClaw(bool closeButton, bool releaseNewPress) 
 {
     // 1. Trigger Release (Overrides everything to unlatch)
-    if (releaseButton && currentClawState != RELEASING) 
+    if (releaseNewPress && currentClawState != RELEASING) 
     {
         currentClawState = RELEASING;
-        releaseTimer = 0;
+        releaseStartTime = pros::millis();
+        ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_COAST); // Switch back to coast for releasing
     }
 
     // 2. State Machine Execution
@@ -181,9 +183,8 @@ void updateRatchetClaw(bool closeButton, bool releaseButton)
         case OPEN:
             if (closeButton) {
                 currentClawState = CLOSING;
-                ratchetClaw.tare_position(); // PROS equivalent of resetPosition()
+                ratchetClaw.tare_position();
             } else {
-                ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
                 ratchetClaw.brake();
             }
             break;
@@ -192,6 +193,8 @@ void updateRatchetClaw(bool closeButton, bool releaseButton)
             if (closeButton && std::abs(ratchetClaw.get_position()) < MAX_CLOSE_DEGREES) {
                 ratchetClaw.move(CLAW_CLOSE_POWER);
             } else {
+                ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD); // Engage internal PID hold once
+                ratchetClaw.brake();
                 currentClawState = LOCKED;
             }
             break;
@@ -200,17 +203,15 @@ void updateRatchetClaw(bool closeButton, bool releaseButton)
             if (closeButton) {
                 ratchetClaw.move(CLAW_CLOSE_POWER);
             } else {
-                ratchetClaw.move(CLAW_HOLD_POWER);
+                ratchetClaw.brake(); // Holds position using E_MOTOR_BRAKE_HOLD
             }
             break;
 
         case RELEASING:
-            if (releaseTimer < RELEASE_DURATION_MS) {
-                ratchetClaw.move(-CLAW_RELEASE_POWER); // Negative value reverses in PROS
-                releaseTimer += 10; // Matches your 10ms pros::delay(10) loop
+            if (pros::millis() - releaseStartTime < RELEASE_DURATION_MS) {
+                ratchetClaw.move(-CLAW_RELEASE_POWER);
             } else {
-                ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
-                ratchetClaw.brake();
+                ratchetClaw.brake(); // Coasts using E_MOTOR_BRAKE_COAST set on entry
                 currentClawState = OPEN;
             }
             break;
@@ -219,8 +220,6 @@ void updateRatchetClaw(bool closeButton, bool releaseButton)
 
 
 void opcontrol() {
-  
-    ratchetClaw.set_encoder_units(pros::E_MOTOR_ENCODER_DEGREES);
   
     while (true) 
     {
@@ -231,7 +230,7 @@ void opcontrol() {
         chassis.arcade(-leftX, -rightY); 
 
         bool btnClose = controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2);
-        bool btnRelease = controller.get_digital(pros::E_CONTROLLER_DIGITAL_L2);
+        bool btnRelease = controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L2)
 
         updateRatchetClaw(btnClose, btnRelease);
         
