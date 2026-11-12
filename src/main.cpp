@@ -17,6 +17,8 @@ pros::Motor ratchetClaw(13, pros::MotorGearset::green);
 pros::Motor cascadeLeft(8, pros::MotorGearset::blue);
 pros::Motor cascadeRight(19, pros::MotorGearset::blue);
 
+pros::MotorGroup cascadeMotors({8, 19}, pros::MotorGearset::blue);
+
 pros::MotorGroup leftMotors({2, 3, 10});
 pros::MotorGroup rightMotors({-11, -12, -20});
 // Inertial Sensor on port 15
@@ -229,9 +231,9 @@ void updateRatchetClaw(bool closeButton, bool releaseNewPress)
     }
 }
 
-// Cascade Lift Configuration
+
+// --- CASCADE LIFT ---
 const int NUM_CASCADE_LEVELS = 4;
-// Target heights in motor degrees (tune these values on your robot)
 const double CASCADE_LEVELS[NUM_CASCADE_LEVELS] = {
     0.0,     // Level 0: Bottom / Stowed
     450.0,   // Level 1: Low goal / Intake height
@@ -239,18 +241,14 @@ const double CASCADE_LEVELS[NUM_CASCADE_LEVELS] = {
     1500.0   // Level 3: High goal
 };
 
-const int CASCADE_MAX_VELOCITY = 200; // RPM (for blue cartridge, max is 600)
-const int DRIVE_MOVE_THRESHOLD = 35;  // Joystick deadband to trigger auto-drop
-
+const int CASCADE_MAX_VELOCITY = 200; 
+const int DRIVE_MOVE_THRESHOLD = 35;  
 int currentCascadeLevel = 0;
 
 void initCascade() {
-    cascadeLeft.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-    cascadeRight.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-    cascadeLeft.set_encoder_units(pros::E_MOTOR_ENCODER_DEGREES);
-    cascadeRight.set_encoder_units(pros::E_MOTOR_ENCODER_DEGREES);
-    cascadeLeft.tare_position();
-    cascadeRight.tare_position();
+    cascadeMotors.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+    cascadeMotors.set_encoder_units(pros::E_MOTOR_ENCODER_DEGREES);
+    cascadeMotors.tare_position();
 }
 
 void updateCascade(bool upNewPress, bool downNewPress, bool isRobotMoving) {
@@ -266,10 +264,9 @@ void updateCascade(bool upNewPress, bool downNewPress, bool isRobotMoving) {
         currentCascadeLevel--;
     }
 
-    // 3. Command motors to move to the target level's degree position
+    // 3. Command motor group to move to the target level's degree position
     double targetPos = CASCADE_LEVELS[currentCascadeLevel];
-    cascadeLeft.move_absolute(targetPos, CASCADE_MAX_VELOCITY);
-    cascadeRight.move_absolute(targetPos, CASCADE_MAX_VELOCITY);
+    cascadeMotors.move_absolute(targetPos, CASCADE_MAX_VELOCITY);
 }
 
 
@@ -284,7 +281,7 @@ void opcontrol() {
         // bind motors to joystick
         chassis.arcade(-leftX, -rightY); 
 
-        bool isDriving = (std::abs(leftY) > DRIVE_MOVE_THRESHOLD || std::abs(rightX) > DRIVE_MOVE_THRESHOLD);
+        bool isDriving = (std::abs(leftX) > DRIVE_MOVE_THRESHOLD || std::abs(rightY) > DRIVE_MOVE_THRESHOLD);
       
         bool btnClose = controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2);
         bool btnRelease = controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L2);
