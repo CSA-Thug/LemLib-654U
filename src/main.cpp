@@ -111,7 +111,7 @@ void initialize()
     // works, refer to the fmtlib docs
 
     // thread to for brain screen and position logging
-    pros::Task screenTask([&]() 
+    pros::Task screenTask([]() 
     {
         while (true) 
         {
@@ -156,108 +156,136 @@ void autonomous()
 }
 
 // Voltage values in PROS range from -127 to 127
-const int CLAW_CLOSE_POWER = 108;    // ~85% of 127
-const int CLAW_RELEASE_POWER = 127;  // 100% of 127
+const int CLAW_CLOSE_POWER = 108;    // ~85% power to close
+const int CLAW_RELEASE_POWER = 127;  // 100% power to unlatch
 
 // Timing & Position Thresholds
-const uint32_t RELEASE_DURATION_MS = 250; 
-const double MIN_CLOSE_DEGREES = 60.0;   // Tune this to match your ratchet tooth engagement
-const double MAX_CLOSE_DEGREES = 360.0; 
+const uint32_t RELEASE_DURATION_MS = 250; // Safety timeout for opening
+const uint32_t STALL_GRACE_MS = 100;      // Ignore low RPM during initial motor spin-up
+const double STALL_VELOCITY_RPM = 5.0;    // Velocity threshold indicating claw hit an object
+const double MIN_CLOSE_DEGREES = 60.0;    // Minimum travel to engage ratchet teeth
+const double MAX_CLOSE_DEGREES = 360.0;   // Hard upper travel limit
 
-enum ClawState { OPEN, CLOSING, LOCKED, RELEASING };
-ClawState currentClawState = OPEN;
-uint32_t releaseStartTime = 0;
+enum ClawState { OPEN, CLOSING, LOCKED, RELEASING }; //
+ClawState currentClawState = OPEN; //
+uint32_t stateStartTime = 0;
 
 void updateRatchetClaw(bool closeButton, bool releaseNewPress) 
 {
     // 1. Trigger Release (Overrides everything to unlatch)
     if (releaseNewPress && currentClawState != RELEASING) 
     {
-        currentClawState = RELEASING;
-        releaseStartTime = pros::millis();
-        ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
+        currentClawState = RELEASING; //
+        stateStartTime = pros::millis();
+        ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_COAST); //
     }
 
     // 2. State Machine Execution
     switch (currentClawState) 
     {
-        case OPEN:
-            if (closeButton) {
-                currentClawState = CLOSING;
-                ratchetClaw.tare_position();
+        case OPEN: //
+            if (closeButton) { //
+                currentClawState = CLOSING; //
+                stateStartTime = pros::millis();
+                ratchetClaw.tare_position(); //
             } else {
-                ratchetClaw.brake();
+                ratchetClaw.brake(); //
             }
             break;
 
-        case CLOSING:
+        case CLOSING: //
         {
-            double currentPos = std::abs(ratchetClaw.get_position());
+            double currentPos = std::abs(ratchetClaw.get_position()); //
+            double currentVel = std::abs(ratchetClaw.get_actual_velocity());
+            uint32_t elapsed = pros::millis() - stateStartTime;
+
+            // Check if claw gripped an object and stalled after startup grace period
+            bool isStalled = (elapsed > STALL_GRACE_MS) && (currentVel < STALL_VELOCITY_RPM);
             
-            if (closeButton && currentPos < MAX_CLOSE_DEGREES) {
-                ratchetClaw.move(CLAW_CLOSE_POWER);
-            } else if (currentPos >= MIN_CLOSE_DEGREES) {
-                // Reached minimum engagement angle: lock the claw
-                ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-                ratchetClaw.brake();
-                currentClawState = LOCKED;
+            if (closeButton && currentPos < MAX_CLOSE_DEGREES && !isStalled) { //
+                ratchetClaw.move(CLAW_CLOSE_POWER); //
+            } else if (currentPos >= MIN_CLOSE_DEGREES) { //
+                // Reached target angle or gripped object: lock the claw
+                ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD); //
+                ratchetClaw.brake(); //
+                currentClawState = LOCKED; //
             } else {
-                // Button released too early: return to open without holding
-                ratchetClaw.brake();
-                currentClawState = OPEN;
+                // Button released too early before engaging ratchet: return to open
+                ratchetClaw.brake(); //
+                currentClawState = OPEN; //
             }
             break;
         }
 
-        case LOCKED:
-            if (closeButton) {
-                ratchetClaw.move(CLAW_CLOSE_POWER);
-            } else {
-                ratchetClaw.brake();
-            }
+        case LOCKED: //
+            // Hold position firmly; avoid driving power into an already-stalled motor
+            ratchetClaw.brake(); //
             break;
 
-        case RELEASING:
-            if (pros::millis() - releaseStartTime < RELEASE_DURATION_MS) {
-                ratchetClaw.move(-CLAW_RELEASE_POWER);
+        case RELEASING: //
+        {
+            uint32_t elapsed = pros::millis() - stateStartTime;
+            // Run backward until returned to starting 0 position OR safety timeout hits
+            if (elapsed < RELEASE_DURATION_MS && ratchetClaw.get_position() > 0.0) { //
+                ratchetClaw.move(-CLAW_RELEASE_POWER); //
             } else {
-                ratchetClaw.brake();
-                currentClawState = OPEN;
+                ratchetClaw.brake(); //
+                ratchetClaw.tare_position(); // Reset zero baseline for next close
+                currentClawState = OPEN; //
             }
             break;
+        }
     }
 }
 
 
 // --- CASCADE LIFT ---
-const int NUM_CASCADE_LEVELS = 4;
-const double CASCADE_LEVELS[NUM_CASCADE_LEVELS] = {
-    0.0,     // Level 0: Bottom / Stowed
-    450.0,   // Level 1: Low goal / Intake height
-    950.0,   // Level 2: Mid goal
-    1500.0   // Level 3: High goal
-};
+const int CASCADE_MANUAL_POWER = 127;     // Voltage (-127 to 127) for manual up/down
+const int CASCADE_DROP_VELOCITY = 450;    // RPM for auto-drop to ground (blue cartridge max is 600)
+const double CASCADE_MIN_DEGREES = 0.0;   // Ground / stowed position
+const double CASCADE_MAX_DEGREES = 1500.0; // Max height limit (adjust to your lift's physical max)
 
-const int CASCADE_MAX_VELOCITY = 450; 
-const int DRIVE_MOVE_THRESHOLD = 35;  
-int currentCascadeLevel = 0;
+bool isCascadeDropping = false;
 
-void updateCascade(bool upNewPress, bool downNewPress, bool isRobotMoving) {
-    // 1. Auto-drop to Level 0 if the robot starts driving while raised
-    if (isRobotMoving && currentCascadeLevel > 0) {
-        currentCascadeLevel = 0;
+void updateCascade(bool upHeld, bool downHeld, bool dropNewPress) 
+{
+    double currentPos = cascadeMotors.get_position();
+
+    // 1. Trigger Auto-Drop to ground level
+    if (dropNewPress) {
+        isCascadeDropping = true;
+        cascadeMotors.move_absolute(CASCADE_MIN_DEGREES, CASCADE_DROP_VELOCITY);
+        return;
     }
 
-    // 2. Step up or down through preset levels
-    if (upNewPress && currentCascadeLevel < NUM_CASCADE_LEVELS - 1) {
-        currentCascadeLevel++;
-    } else if (downNewPress && currentCascadeLevel > 0) {
-        currentCascadeLevel--;
+    // 2. Manual Override: Holding up or down cancels an active auto-drop
+    if (upHeld || downHeld) {
+        isCascadeDropping = false;
+
+        if (upHeld && currentPos < CASCADE_MAX_DEGREES) {
+            cascadeMotors.move(CASCADE_MANUAL_POWER);
+        } 
+        else if (downHeld && currentPos > CASCADE_MIN_DEGREES) {
+            cascadeMotors.move(-CASCADE_MANUAL_POWER);
+        } 
+        else {
+            // At soft limit: hold position
+            cascadeMotors.brake();
+        }
+        return;
     }
 
-    // 3. Command motor group to move to the target level's degree position
-    double targetPos = CASCADE_LEVELS[currentCascadeLevel];
-    cascadeMotors.move_absolute(targetPos, CASCADE_MAX_VELOCITY);
+    // 3. Handle ongoing Auto-Drop or Hold in place
+    if (isCascadeDropping) {
+        // Stop auto-drop once within 10 degrees of ground
+        if (currentPos <= CASCADE_MIN_DEGREES + 10.0) {
+            isCascadeDropping = false;
+            cascadeMotors.brake();
+        }
+    } else {
+        // Neither trigger is held and not dropping: hold current height
+        cascadeMotors.brake();
+    }
 }
 
 
@@ -272,16 +300,17 @@ void opcontrol() {
         // bind motors to joystick
         chassis.arcade(-leftY, -rightX); 
 
-        bool isDriving = (std::abs(leftY) > DRIVE_MOVE_THRESHOLD || std::abs(rightX) > DRIVE_MOVE_THRESHOLD);
+        //bool isDriving = (std::abs(leftY) > DRIVE_MOVE_THRESHOLD || std::abs(rightX) > DRIVE_MOVE_THRESHOLD);
       
         bool btnClose = controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2);
         bool btnRelease = controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L2);
 
         updateRatchetClaw(btnClose, btnRelease);
 
-        bool btnCascadeUp = controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_R1);
-        bool btnCascadeDown = controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L1);
-        updateCascade(btnCascadeUp, btnCascadeDown, isDriving);
+        bool btnCascadeUp = controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1);
+        bool btnCascadeDown = controller.get_digital(pros::E_CONTROLLER_DIGITAL_L1);
+        bool btnCascadeDrop = controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_B);
+        updateCascade(btnCascadeUp, btnCascadeDown, btnCascadeDrop);
       
         // delay to save resources
         pros::delay(10);
