@@ -161,6 +161,7 @@ const int CLAW_RELEASE_POWER = 127;  // 100% of 127
 
 // Timing & Position Thresholds
 const uint32_t RELEASE_DURATION_MS = 250; 
+const double MIN_CLOSE_DEGREES = 60.0;   // Tune this to match your ratchet tooth engagement
 const double MAX_CLOSE_DEGREES = 360.0; 
 
 enum ClawState { OPEN, CLOSING, LOCKED, RELEASING };
@@ -174,7 +175,7 @@ void updateRatchetClaw(bool closeButton, bool releaseNewPress)
     {
         currentClawState = RELEASING;
         releaseStartTime = pros::millis();
-        ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_COAST); // Switch back to coast for releasing
+        ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
     }
 
     // 2. State Machine Execution
@@ -190,20 +191,29 @@ void updateRatchetClaw(bool closeButton, bool releaseNewPress)
             break;
 
         case CLOSING:
-            if (closeButton && std::abs(ratchetClaw.get_position()) < MAX_CLOSE_DEGREES) {
+        {
+            double currentPos = std::abs(ratchetClaw.get_position());
+            
+            if (closeButton && currentPos < MAX_CLOSE_DEGREES) {
                 ratchetClaw.move(CLAW_CLOSE_POWER);
-            } else {
-                ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD); // Engage internal PID hold once
+            } else if (currentPos >= MIN_CLOSE_DEGREES) {
+                // Reached minimum engagement angle: lock the claw
+                ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
                 ratchetClaw.brake();
                 currentClawState = LOCKED;
+            } else {
+                // Button released too early: return to open without holding
+                ratchetClaw.brake();
+                currentClawState = OPEN;
             }
             break;
+        }
 
         case LOCKED:
             if (closeButton) {
                 ratchetClaw.move(CLAW_CLOSE_POWER);
             } else {
-                ratchetClaw.brake(); // Holds position using E_MOTOR_BRAKE_HOLD
+                ratchetClaw.brake();
             }
             break;
 
@@ -211,7 +221,7 @@ void updateRatchetClaw(bool closeButton, bool releaseNewPress)
             if (pros::millis() - releaseStartTime < RELEASE_DURATION_MS) {
                 ratchetClaw.move(-CLAW_RELEASE_POWER);
             } else {
-                ratchetClaw.brake(); // Coasts using E_MOTOR_BRAKE_COAST set on entry
+                ratchetClaw.brake();
                 currentClawState = OPEN;
             }
             break;
@@ -230,7 +240,7 @@ void opcontrol() {
         chassis.arcade(-leftX, -rightY); 
 
         bool btnClose = controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2);
-        bool btnRelease = controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L2)
+        bool btnRelease = controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L2);
 
         updateRatchetClaw(btnClose, btnRelease);
         
