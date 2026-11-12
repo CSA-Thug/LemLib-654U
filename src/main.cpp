@@ -4,16 +4,16 @@
 // controller
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 
-// motor groups
+// motor groups blue
 pros::Motor left_blue_1(-3, pros::MotorGearset::blue);
 pros::Motor left_blue_2(-10, pros::MotorGearset::blue);
 pros::Motor right_blue_1(-12, pros::MotorGearset::blue);
 pros::Motor right_blue_2(-20, pros::MotorGearset::blue);
-
+// 5.5
 pros::Motor left_green(-2, pros::MotorGearset::green);
 pros::Motor right_green(-11, pros::MotorGearset::green);
 
-pros::Motor intake(13, pros::MotorGearset::green);
+pros::Motor ratchetClaw(13, pros::MotorGearset::green);
 pros::Motor cascadeLeft(8, pros::MotorGearset::blue);
 pros::Motor cascadeRight(19, pros::MotorGearset::blue);
 
@@ -153,26 +153,89 @@ void autonomous()
 
 }
 
-/**
- * Runs in driver control
- */
+void updateRatchetClaw(bool closeButton, bool releaseButton) 
+{
+  // 1. Trigger Release (Overrides everything to unlatch)
+  if (releaseButton && currentClawState != RELEASING) 
+  {
+    currentClawState = RELEASING;
+    releaseTimer = 0;
+  }
+
+  // 2. State Machine Execution
+  switch (currentClawState) {
+    
+    case OPEN:
+      if (closeButton) {
+        currentClawState = CLOSING;
+        ClawMotor.resetPosition(); // Reset encoder to track travel
+      } else {
+        ClawMotor.stop(coast); // Coast so ratchet clicks freely if pushed
+      }
+      break;
+
+    case CLOSING:
+      // Spin forward until button is released OR max travel is reached
+      if (closeButton && fabs(ClawMotor.position(degrees)) < MAX_CLOSE_DEGREES) {
+        ClawMotor.spin(forward, CLAW_CLOSE_SPEED, percent);
+      } else {
+        currentClawState = LOCKED;
+      }
+      break;
+
+    case LOCKED:
+      // The mechanical ratchet holds the load, so cut power to save motor heat
+      if (closeButton) {
+        // Allow driver to "ratchet" it tighter if needed
+        ClawMotor.spin(forward, CLAW_CLOSE_SPEED, percent);
+      } else {
+        // Apply minimal holding power (or 0 if your ratchet has zero backlash)
+        ClawMotor.spin(forward, CLAW_HOLD_TORQUE, percent);
+      }
+      break;
+
+    case RELEASING:
+      // Reverse briefly to disengage the ratchet pawl
+      if (releaseTimer < RELEASE_DURATION_MS) {
+        ClawMotor.spin(reverse, CLAW_RELEASE_SPEED, percent);
+        releaseTimer += 20; // Matches the 20ms loop delay below
+      } else {
+        ClawMotor.stop(coast);
+        currentClawState = OPEN;
+      }
+      break;
+  }
+}
+
+
 void opcontrol() {
-    // controller
-    // loop to continuously update motors
-    while (true) {
+  
+    const int CLAW_CLOSE_SPEED = 85;    // Speed when pulling ratchet tight
+    const int CLAW_RELEASE_SPEED = 100; // Speed to unclick the ratchet
+    const int CLAW_HOLD_TORQUE = 15;    // Gentle stall torque if ratchet has slack
+    
+    // Timing & Position Thresholds
+    const int RELEASE_DURATION_MS = 250; // How long it reverses to clear the pawl (in milliseconds)
+    const double MAX_CLOSE_DEGREES = 360.0; // Safety limit to prevent motor burnout
+  
+    enum ClawState { OPEN, CLOSING, LOCKED, RELEASING };
+    ClawState currentClawState = OPEN;
+    int releaseTimer = 0;
+
+
+
+    while (true) 
+    {
         // get joystick positions
         int leftX = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
         int rightY = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
         // bind motors to joystick
         chassis.arcade(-leftX, -rightY); 
-        int intakePower = 0;
-        if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2)) {
-            intakePower = 127;
-        } else if (controller.get_digital(pros::E_CONTROLLER_DIGITAL_L2)) {
-            intakePower = -127;
-        }
-        intake.move(intakePower);
-        
+
+        bool btnClose = controller.ButtonR1.pressing();
+        bool btnRelease = controller.ButtonR2.pressing();
+
+        updateRatchetClaw(btnClose, btnRelease);
         
       
         int cascadePower = 0;
@@ -183,10 +246,9 @@ void opcontrol() {
                    !controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1)) {
             cascadePower = -127;
         }
+      
         cascadeLeft.move(cascadePower);
         cascadeRight.move(cascadePower);
-
-        
         // delay to save resources
         pros::delay(10);
     }
