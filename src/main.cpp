@@ -101,7 +101,8 @@ void initialize() {
 
     ratchetClaw.set_encoder_units(pros::E_MOTOR_ENCODER_DEGREES);
     ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
-    
+
+    initCascade();
     // the default rate is 50. however, if you need to change the rate, you
     // can do the following.
     // lemlib::bufferedStdout().setRate(...);
@@ -239,10 +240,9 @@ const double CASCADE_LEVELS[NUM_CASCADE_LEVELS] = {
 };
 
 const int CASCADE_MAX_VELOCITY = 200; // RPM (for blue cartridge, max is 600)
-const int DRIVE_MOVE_THRESHOLD = 10;  // Joystick deadband to trigger auto-drop
+const int DRIVE_MOVE_THRESHOLD = 35;  // Joystick deadband to trigger auto-drop
 
 int currentCascadeLevel = 0;
-bool isManualResetting = false;
 
 void initCascade() {
     cascadeLeft.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
@@ -274,8 +274,6 @@ void updateCascade(bool upNewPress, bool downNewPress, bool isRobotMoving) {
 
 
 void opcontrol() {
-
-    initCascade();
   
     while (true) 
     {
