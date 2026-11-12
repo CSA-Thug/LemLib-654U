@@ -4,23 +4,12 @@
 // controller
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 
-// motor groups blue
-pros::Motor left_blue_1(-3, pros::MotorGearset::blue);
-pros::Motor left_blue_2(-10, pros::MotorGearset::blue);
-pros::Motor right_blue_1(-12, pros::MotorGearset::blue);
-pros::Motor right_blue_2(-20, pros::MotorGearset::blue);
-// 5.5
-pros::Motor left_green(-2, pros::MotorGearset::green);
-pros::Motor right_green(-11, pros::MotorGearset::green);
-
 pros::Motor ratchetClaw(13, pros::MotorGearset::green);
-pros::Motor cascadeLeft(8, pros::MotorGearset::blue);
-pros::Motor cascadeRight(19, pros::MotorGearset::blue);
 
 pros::MotorGroup cascadeMotors({8, 19}, pros::MotorGearset::blue);
 
-pros::MotorGroup leftMotors({2, 3, 10});
-pros::MotorGroup rightMotors({-11, -12, -20});
+pros::MotorGroup leftMotors({2, 3, 10}, pros::MotorGearset::blue);
+pros::MotorGroup rightMotors({-11, -12, -20}, pros::MotorGearset::blue);
 // Inertial Sensor on port 15
 pros::Imu imu(15);
 
@@ -41,7 +30,7 @@ lemlib::Drivetrain drivetrain(&leftMotors, // left motor group
                               14, // 10 inch track width
                               lemlib::Omniwheel::NEW_275, // using new 2.75" omnis
                               600, // drivetrain rpm is 600
-                              6 // horizontal drift is 2. If we had traction wheels, it would have been 8
+                              8 // horizontal drift is 2. If we had traction wheels, it would have been 8
 );
 
 // lateral motion controller
@@ -97,7 +86,15 @@ lemlib::Chassis chassis(drivetrain, linearController, angularController, sensors
  * All other competition modes are blocked by initialize; it is recommended
  * to keep execution time for this mode under a few seconds.
  */
-void initialize() {
+void initCascade() 
+{
+    cascadeMotors.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
+    cascadeMotors.set_encoder_units(pros::E_MOTOR_ENCODER_DEGREES);
+    cascadeMotors.tare_position();
+}
+
+void initialize() 
+{
     pros::lcd::initialize(); // initialize brain screen
     chassis.calibrate(); // calibrate sensors
 
@@ -241,15 +238,9 @@ const double CASCADE_LEVELS[NUM_CASCADE_LEVELS] = {
     1500.0   // Level 3: High goal
 };
 
-const int CASCADE_MAX_VELOCITY = 200; 
+const int CASCADE_MAX_VELOCITY = 450; 
 const int DRIVE_MOVE_THRESHOLD = 35;  
 int currentCascadeLevel = 0;
-
-void initCascade() {
-    cascadeMotors.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-    cascadeMotors.set_encoder_units(pros::E_MOTOR_ENCODER_DEGREES);
-    cascadeMotors.tare_position();
-}
 
 void updateCascade(bool upNewPress, bool downNewPress, bool isRobotMoving) {
     // 1. Auto-drop to Level 0 if the robot starts driving while raised
@@ -275,13 +266,13 @@ void opcontrol() {
     while (true) 
     {
         // get joystick positions
-        int leftX = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
-        int rightY = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
+        int leftY = controller.get_analog(pros::E_CONTROLLER_ANALOG_LEFT_Y);
+        int rightX = controller.get_analog(pros::E_CONTROLLER_ANALOG_RIGHT_X);
         
         // bind motors to joystick
-        chassis.arcade(-leftX, -rightY); 
+        chassis.arcade(-leftY, -rightX); 
 
-        bool isDriving = (std::abs(leftX) > DRIVE_MOVE_THRESHOLD || std::abs(rightY) > DRIVE_MOVE_THRESHOLD);
+        bool isDriving = (std::abs(leftY) > DRIVE_MOVE_THRESHOLD || std::abs(rightX) > DRIVE_MOVE_THRESHOLD);
       
         bool btnClose = controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2);
         bool btnRelease = controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_L2);
