@@ -153,77 +153,75 @@ void autonomous()
 
 }
 
+// Voltage values in PROS range from -127 to 127
+const int CLAW_CLOSE_POWER = 108;    // ~85% of 127
+const int CLAW_RELEASE_POWER = 127;  // 100% of 127
+const int CLAW_HOLD_POWER = 19;      // ~15% of 127
+
+// Timing & Position Thresholds
+const int RELEASE_DURATION_MS = 250; 
+const double MAX_CLOSE_DEGREES = 360.0; 
+
+enum ClawState { OPEN, CLOSING, LOCKED, RELEASING };
+ClawState currentClawState = OPEN;
+int releaseTimer = 0;
+
 void updateRatchetClaw(bool closeButton, bool releaseButton) 
 {
-  // 1. Trigger Release (Overrides everything to unlatch)
-  if (releaseButton && currentClawState != RELEASING) 
-  {
-    currentClawState = RELEASING;
-    releaseTimer = 0;
-  }
+    // 1. Trigger Release (Overrides everything to unlatch)
+    if (releaseButton && currentClawState != RELEASING) 
+    {
+        currentClawState = RELEASING;
+        releaseTimer = 0;
+    }
 
-  // 2. State Machine Execution
-  switch (currentClawState) {
-    
-    case OPEN:
-      if (closeButton) {
-        currentClawState = CLOSING;
-        ClawMotor.resetPosition(); // Reset encoder to track travel
-      } else {
-        ClawMotor.stop(coast); // Coast so ratchet clicks freely if pushed
-      }
-      break;
+    // 2. State Machine Execution
+    switch (currentClawState) 
+    {
+        case OPEN:
+            if (closeButton) {
+                currentClawState = CLOSING;
+                ratchetClaw.tare_position(); // PROS equivalent of resetPosition()
+            } else {
+                ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
+                ratchetClaw.brake();
+            }
+            break;
 
-    case CLOSING:
-      // Spin forward until button is released OR max travel is reached
-      if (closeButton && fabs(ClawMotor.position(degrees)) < MAX_CLOSE_DEGREES) {
-        ClawMotor.spin(forward, CLAW_CLOSE_SPEED, percent);
-      } else {
-        currentClawState = LOCKED;
-      }
-      break;
+        case CLOSING:
+            if (closeButton && std::abs(ratchetClaw.get_position()) < MAX_CLOSE_DEGREES) {
+                ratchetClaw.move(CLAW_CLOSE_POWER);
+            } else {
+                currentClawState = LOCKED;
+            }
+            break;
 
-    case LOCKED:
-      // The mechanical ratchet holds the load, so cut power to save motor heat
-      if (closeButton) {
-        // Allow driver to "ratchet" it tighter if needed
-        ClawMotor.spin(forward, CLAW_CLOSE_SPEED, percent);
-      } else {
-        // Apply minimal holding power (or 0 if your ratchet has zero backlash)
-        ClawMotor.spin(forward, CLAW_HOLD_TORQUE, percent);
-      }
-      break;
+        case LOCKED:
+            if (closeButton) {
+                ratchetClaw.move(CLAW_CLOSE_POWER);
+            } else {
+                ratchetClaw.move(CLAW_HOLD_POWER);
+            }
+            break;
 
-    case RELEASING:
-      // Reverse briefly to disengage the ratchet pawl
-      if (releaseTimer < RELEASE_DURATION_MS) {
-        ClawMotor.spin(reverse, CLAW_RELEASE_SPEED, percent);
-        releaseTimer += 20; // Matches the 20ms loop delay below
-      } else {
-        ClawMotor.stop(coast);
-        currentClawState = OPEN;
-      }
-      break;
-  }
+        case RELEASING:
+            if (releaseTimer < RELEASE_DURATION_MS) {
+                ratchetClaw.move(-CLAW_RELEASE_POWER); // Negative value reverses in PROS
+                releaseTimer += 10; // Matches your 10ms pros::delay(10) loop
+            } else {
+                ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
+                ratchetClaw.brake();
+                currentClawState = OPEN;
+            }
+            break;
+    }
 }
 
 
 void opcontrol() {
   
-    const int CLAW_CLOSE_SPEED = 85;    // Speed when pulling ratchet tight
-    const int CLAW_RELEASE_SPEED = 100; // Speed to unclick the ratchet
-    const int CLAW_HOLD_TORQUE = 15;    // Gentle stall torque if ratchet has slack
-    
-    // Timing & Position Thresholds
-    const int RELEASE_DURATION_MS = 250; // How long it reverses to clear the pawl (in milliseconds)
-    const double MAX_CLOSE_DEGREES = 360.0; // Safety limit to prevent motor burnout
+    ratchetClaw.set_encoder_units(pros::E_MOTOR_ENCODER_DEGREES);
   
-    enum ClawState { OPEN, CLOSING, LOCKED, RELEASING };
-    ClawState currentClawState = OPEN;
-    int releaseTimer = 0;
-
-
-
     while (true) 
     {
         // get joystick positions
@@ -232,8 +230,8 @@ void opcontrol() {
         // bind motors to joystick
         chassis.arcade(-leftX, -rightY); 
 
-        bool btnClose = controller.ButtonR1.pressing();
-        bool btnRelease = controller.ButtonR2.pressing();
+        bool btnClose = controller.get_digital(pros::E_CONTROLLER_DIGITAL_R2);
+        bool btnRelease = controller.get_digital(pros::E_CONTROLLER_DIGITAL_L2);
 
         updateRatchetClaw(btnClose, btnRelease);
         
