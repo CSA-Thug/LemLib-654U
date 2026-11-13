@@ -1,5 +1,9 @@
 #include "main.h"
 #include "lemlib/api.hpp" // IWYU pragma: keep
+#include "pros/screen.hpp"
+#include <algorithm>
+#include <cmath>
+#include <cstdint>
 
 // controller
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
@@ -15,33 +19,33 @@ pros::Imu imu(15);
 
 
 // tracking wheels
-// horizontal tracking wheel encoder. Rotation sensor, port 20, not reversed
+// horizontal tracking wheel encoder. Rotation sensor on port 6, not reversed.
 pros::Rotation horizontalEnc(6);
-// vertical tracking wheel encoder. Rotation sensor, port 11, reversed
+// vertical tracking wheel encoder. Rotation sensor on port 5, not reversed.
 pros::Rotation verticalEnc(5);
-// horizontal tracking wheel. 2.75" diameter, 5.75" offset, back of the robot (negative)
+// horizontal tracking wheel. 2.75" diameter, 5.75" offset behind the robot center (negative).
 lemlib::TrackingWheel horizontal(&horizontalEnc, lemlib::Omniwheel::NEW_275, -5.75);
-// vertical tracking wheel. 2.75" diameter, 2.5" offset, left of the robot (negative)
+// vertical tracking wheel. 2.75" diameter, 2.5" offset left of the robot center (negative).
 lemlib::TrackingWheel vertical(&verticalEnc, lemlib::Omniwheel::NEW_275, -2.5);
 
 // drivetrain settings
 lemlib::Drivetrain drivetrain(&leftMotors, // left motor group
                               &rightMotors, // right motor group
-                              14, // 10 inch track width
-                              lemlib::Omniwheel::NEW_275, // using new 2.75" omnis
-                              600, // drivetrain rpm is 600
-                              8 // horizontal drift is 2. If we had traction wheels, it would have been 8
+                              14, // track width in inches
+                              lemlib::Omniwheel::NEW_275, // using 2.75" omni wheels
+                              600, // drivetrain RPM
+                              8 // horizontal drift value
 );
 
 // lateral motion controller
 lemlib::ControllerSettings linearController(10, // proportional gain (kP)
                                             0, // integral gain (kI)
                                             3, // derivative gain (kD)
-                                            3, // anti windup
+                                            3, // anti-windup
                                             1, // small error range, in inches
-                                            100, // small error range timeout, in milliseconds
+                                            100, // small error range timeout, in ms
                                             3, // large error range, in inches
-                                            500, // large error range timeout, in milliseconds
+                                            500, // large error range timeout, in ms
                                             20 // maximum acceleration (slew)
 );
 
@@ -49,31 +53,31 @@ lemlib::ControllerSettings linearController(10, // proportional gain (kP)
 lemlib::ControllerSettings angularController(2, // proportional gain (kP)
                                              0, // integral gain (kI)
                                              10, // derivative gain (kD)
-                                             3, // anti windup
+                                             3, // anti-windup
                                              1, // small error range, in degrees
-                                             100, // small error range timeout, in milliseconds
+                                             100, // small error range timeout, in ms
                                              3, // large error range, in degrees
-                                             500, // large error range timeout, in milliseconds
+                                             500, // large error range timeout, in ms
                                              0 // maximum acceleration (slew)
 );
 
 // sensors for odometry
 lemlib::OdomSensors sensors(&vertical, // vertical tracking wheel
-                            nullptr, // vertical tracking wheel 2, set to nullptr as we don't have a second one
+                            nullptr, // secondary vertical tracking wheel, not used
                             &horizontal, // horizontal tracking wheel
-                            nullptr, // horizontal tracking wheel 2, set to nullptr as we don't have a second one
+                            nullptr, // secondary horizontal tracking wheel, not used
                             &imu // inertial sensor
 );
 
 // input curve for throttle input during driver control
 lemlib::ExpoDriveCurve throttleCurve(3, // joystick deadband out of 127
-                                     10, // minimum output where drivetrain will move out of 127
+                                     10, // minimum output before drivetrain starts moving
                                      1.019 // expo curve gain
 );
 
 // input curve for steer input during driver control
 lemlib::ExpoDriveCurve steerCurve(3, // joystick deadband out of 127
-                                  10, // minimum output where drivetrain will move out of 127
+                                  10, // minimum output before drivetrain starts moving
                                   1.019 // expo curve gain
 );
 
@@ -95,11 +99,12 @@ void initCascade()
 
 void initialize() 
 {
-    pros::lcd::initialize(); // initialize brain screen
+    pros::screen::erase();
+    pros::screen::print(pros::E_TEXT_MEDIUM, 1, "Initializing...");
     chassis.calibrate(); // calibrate sensors
 
     ratchetClaw.set_encoder_units(pros::E_MOTOR_ENCODER_DEGREES);
-    ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
+    ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
 
     initCascade();
     // the default rate is 50. however, if you need to change the rate, you
@@ -110,19 +115,17 @@ void initialize()
     // for more information on how the formatting for the loggers
     // works, refer to the fmtlib docs
 
-    // thread to for brain screen and position logging
+    // Keep the Brain screen and telemetry updated with the odometry pose.
     pros::Task screenTask([]() 
     {
         while (true) 
         {
-            // print robot location to the brain screen
-            pros::lcd::print(0, "X: %f", chassis.getPose().x); // x
-            pros::lcd::print(1, "Y: %f", chassis.getPose().y); // y
-            pros::lcd::print(2, "Theta: %f", chassis.getPose().theta); // heading
-            // log position telemetry
-            lemlib::telemetrySink()->info("Chassis pose: {}", chassis.getPose());
-            // delay to save resources
-            pros::delay(50);
+            const lemlib::Pose pose = chassis.getPose();
+            pros::screen::print(pros::E_TEXT_MEDIUM, 1, "X: %.1f in", pose.x);
+            pros::screen::print(pros::E_TEXT_MEDIUM, 2, "Y: %.1f in", pose.y);
+            pros::screen::print(pros::E_TEXT_MEDIUM, 3, "Heading: %.1f deg", pose.theta);
+            lemlib::telemetrySink()->info("Chassis pose: {}", pose);
+            pros::delay(100);
         }
     });
 }
@@ -140,9 +143,8 @@ void competition_initialize()
   
 }
 
-// get a path used for pure pursuit
-// this needs to be put outside a function
-ASSET(example_txt); // '.' replaced with "_" to make c++ happy
+// Example asset retained for autonomous path or future use.
+ASSET(example_txt); // '.' replaced with "_" to make C++ happy.
 
 /**
  * Runs during auto
@@ -155,155 +157,234 @@ void autonomous()
     chassis.moveToPose(20, 15, 90, 4000);  
 }
 
-// Replace your existing ratchet claw variables and function with this:
-const int CLAW_CLOSE_POWER = 108;    
-const int CLAW_RELEASE_POWER = 127;  
+// The intake runs while held; tune the bounded release travel to stop before the physical
+// opening stoppers.
+const int CLAW_INTAKE_POWER = 108;
+const int CLAW_OPEN_SPEED_RPM = 127;
+const int CLAW_INTAKE_DIRECTION = 1; // Change to -1 if the claw motor is reversed.
+const double CLAW_OPEN_TRAVEL_DEGREES = 300.0;
+const double CLAW_OPEN_TOLERANCE_DEGREES = 5.0;
+const uint32_t CLAW_OPEN_TIMEOUT_MS = 750;
+const uint32_t CLAW_STALL_GRACE_MS = 100;
+const uint32_t CLAW_STALL_CONFIRM_MS = 100;
+const double CLAW_STALL_VELOCITY_RPM = 5.0;
 
-const uint32_t RELEASE_DURATION_MS = 250; 
-const uint32_t STALL_GRACE_MS = 100;      
-const double STALL_VELOCITY_RPM = 5.0;    
-const double MIN_CLOSE_DEGREES = 60.0;    
-const double MAX_CLOSE_DEGREES = 360.0;   
+enum class ClawState { Idle, Intaking, Opening };
+ClawState clawState = ClawState::Idle;
+bool clawNeedsOpening = false;
+bool clawIntakeInhibited = false;
+bool clawIntakeStalled = false;
+uint32_t clawStateStartTime = 0;
+uint32_t clawStallStartTime = 0;
+double clawOpenStartPosition = 0.0;
 
-enum ClawState { OPEN, CLOSING, LOCKED, RELEASING };
-ClawState currentClawState = OPEN;
-uint32_t stateStartTime = 0;
-int closeDirection = 1; // Tracks whether closing moved positive (1) or negative (-1)
-
-void updateRatchetClaw(bool closeButton, bool releaseNewPress) 
+void updateRatchetClaw(bool intakeHeld, bool releaseNewPress)
 {
-    if (releaseNewPress && currentClawState != RELEASING) 
-    {
-        currentClawState = RELEASING;
-        stateStartTime = pros::millis();
-        ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_COAST);
+    const uint32_t now = pros::millis();
+    const double position = ratchetClaw.get_position();
+
+    if (!intakeHeld) {
+        clawIntakeInhibited = false;
+        clawIntakeStalled = false;
+        clawStallStartTime = 0;
     }
 
-    switch (currentClawState) 
-    {
-        case OPEN:
-            if (closeButton) {
-                currentClawState = CLOSING;
-                stateStartTime = pros::millis();
-                ratchetClaw.tare_position();
-            } else {
-                ratchetClaw.brake();
-            }
-            break;
+    if (clawState == ClawState::Opening) {
+        const double openProgress =
+            (clawOpenStartPosition - position) * CLAW_INTAKE_DIRECTION;
+        const bool reachedOpenLimit =
+            openProgress >= CLAW_OPEN_TRAVEL_DEGREES - CLAW_OPEN_TOLERANCE_DEGREES;
+        const bool timedOut = now - clawStateStartTime >= CLAW_OPEN_TIMEOUT_MS;
 
-        case CLOSING:
-        {
-            double rawPos = ratchetClaw.get_position();
-            double currentPos = std::abs(rawPos);
-            double currentVel = std::abs(ratchetClaw.get_actual_velocity());
-            uint32_t elapsed = pros::millis() - stateStartTime;
-
-            bool isStalled = (elapsed > STALL_GRACE_MS) && (currentVel < STALL_VELOCITY_RPM);
-            
-            if (closeButton && currentPos < MAX_CLOSE_DEGREES && !isStalled) {
-                ratchetClaw.move(CLAW_CLOSE_POWER);
-            } else if (currentPos >= MIN_CLOSE_DEGREES) {
-                // Record the actual sign of travel before locking
-                closeDirection = (rawPos >= 0.0) ? 1 : -1;
-                ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
-                ratchetClaw.brake();
-                currentClawState = LOCKED;
-            } else {
-                ratchetClaw.brake();
-                currentClawState = OPEN;
-            }
-            break;
-        }
-
-        case LOCKED:
+        if (reachedOpenLimit || timedOut) {
             ratchetClaw.brake();
-            break;
-
-        case RELEASING:
-        {
-            uint32_t elapsed = pros::millis() - stateStartTime;
-            // Drive opposite to closeDirection until back near 0
-            double signedRemaining = ratchetClaw.get_position() * closeDirection;
-
-            if (elapsed < RELEASE_DURATION_MS && signedRemaining > 0.0) {
-                ratchetClaw.move(-CLAW_RELEASE_POWER * closeDirection);
+            clawState = ClawState::Idle;
+            if (reachedOpenLimit) {
+                clawNeedsOpening = false;
+                lemlib::telemetrySink()->info("Claw release completed");
             } else {
-                ratchetClaw.brake();
-                ratchetClaw.tare_position();
-                currentClawState = OPEN;
+                lemlib::telemetrySink()->warn("Claw release timed out before reaching its target");
             }
-            break;
+            return;
         }
-    }
-}
-
-
-
-// Replace your existing cascade variables and function with this:
-const int CASCADE_MANUAL_POWER = 127;     
-const int CASCADE_DROP_VELOCITY = 450;    
-const int CASCADE_RESET_POWER = -40;      // Slow downward power for re-zeroing
-const double CASCADE_MIN_DEGREES = 0.0;   
-const double CASCADE_MAX_DEGREES = 1500.0; 
-
-const uint32_t CASCADE_DROP_TIMEOUT_MS = 1500; // Max time allowed for auto-drop
-const uint32_t CASCADE_STALL_GRACE_MS = 150;   // Startup grace period before checking stall
-
-bool isCascadeDropping = false;
-uint32_t cascadeDropStartTime = 0;
-
-void updateCascade(bool upHeld, bool downHeld, bool dropNewPress, bool resetHeld) 
-{
-    double currentPos = cascadeMotors.get_position();
-
-    // 1. Mid-Match Re-Zero Override (Hold D-Pad Down to lower past soft limit and reset 0)
-    if (resetHeld) {
-        isCascadeDropping = false;
-        cascadeMotors.move(CASCADE_RESET_POWER);
-        cascadeMotors.tare_position();
         return;
     }
 
-    // 2. Trigger Auto-Drop to ground level
+    if (releaseNewPress && clawNeedsOpening) {
+        clawState = ClawState::Opening;
+        clawStateStartTime = now;
+        clawIntakeInhibited = true;
+        clawOpenStartPosition = position;
+        const double openTargetPosition =
+            position - CLAW_INTAKE_DIRECTION * CLAW_OPEN_TRAVEL_DEGREES;
+        ratchetClaw.move_absolute(openTargetPosition, CLAW_OPEN_SPEED_RPM);
+        return;
+    }
+
+    if (intakeHeld && !clawIntakeInhibited && !clawIntakeStalled) {
+        if (clawState != ClawState::Intaking) {
+            clawState = ClawState::Intaking;
+            clawStateStartTime = now;
+        }
+        clawNeedsOpening = true;
+
+        const double velocity = std::abs(ratchetClaw.get_actual_velocity());
+        const uint32_t intakeElapsed = now - clawStateStartTime;
+        if (intakeElapsed > CLAW_STALL_GRACE_MS && velocity < CLAW_STALL_VELOCITY_RPM) {
+            if (clawStallStartTime == 0) {
+                clawStallStartTime = now;
+            }
+        } else {
+            clawStallStartTime = 0;
+        }
+        const bool stalled = clawStallStartTime != 0 &&
+                             now - clawStallStartTime >= CLAW_STALL_CONFIRM_MS;
+        if (stalled) {
+            ratchetClaw.brake();
+            clawState = ClawState::Idle;
+            clawIntakeStalled = true;
+            lemlib::telemetrySink()->warn("Claw intake stopped after a stall");
+            return;
+        }
+
+        ratchetClaw.move(CLAW_INTAKE_POWER * CLAW_INTAKE_DIRECTION);
+        return;
+    }
+
+    if (clawState == ClawState::Intaking) {
+        clawState = ClawState::Idle;
+    }
+    ratchetClaw.brake();
+}
+
+// Cascade lift control constants and state tracking.
+const int CASCADE_MANUAL_VELOCITY = 450;
+const int CASCADE_DROP_VELOCITY = 450;
+const int CASCADE_RESET_POWER = -40; // Slow downward power for re-zeroing.
+const double CASCADE_MIN_DEGREES = 0.0;
+const double CASCADE_MAX_DEGREES = 1500.0;
+const double CASCADE_SLOWDOWN_DEGREES = 150.0;
+const double CASCADE_LIMIT_TOLERANCE_DEGREES = 5.0;
+const uint32_t CASCADE_DROP_TIMEOUT_MS = 1500;
+const uint32_t CASCADE_RESET_TIMEOUT_MS = 3000;
+const uint32_t CASCADE_STALL_GRACE_MS = 150;
+const uint32_t CASCADE_STALL_CONFIRM_MS = 100;
+const double CASCADE_STALL_VELOCITY_RPM = 5.0;
+
+bool isCascadeDropping = false;
+uint32_t cascadeDropStartTime = 0;
+uint32_t cascadeDropStallStartTime = 0;
+bool isCascadeResetting = false;
+bool cascadeResetComplete = false;
+uint32_t cascadeResetStartTime = 0;
+uint32_t cascadeResetStallStartTime = 0;
+
+void updateCascade(bool upHeld, bool downHeld, bool dropNewPress, bool resetHeld)
+{
+    const uint32_t now = pros::millis();
+    const double currentPos = cascadeMotors.get_position();
+    const double currentVel = std::abs(cascadeMotors.get_actual_velocity());
+
+    if (!resetHeld) {
+        isCascadeResetting = false;
+        cascadeResetComplete = false;
+        cascadeResetStallStartTime = 0;
+    } else {
+        isCascadeDropping = false;
+        if (cascadeResetComplete) {
+            cascadeMotors.brake();
+            return;
+        }
+        if (!isCascadeResetting) {
+            isCascadeResetting = true;
+            cascadeResetStartTime = now;
+            cascadeResetStallStartTime = 0;
+            lemlib::telemetrySink()->info("Cascade reset started");
+        }
+
+        const uint32_t elapsed = now - cascadeResetStartTime;
+        if (elapsed >= CASCADE_RESET_TIMEOUT_MS) {
+            cascadeMotors.brake();
+            isCascadeResetting = false;
+            cascadeResetComplete = true;
+            lemlib::telemetrySink()->warn("Cascade reset timed out without detecting the lower stop");
+            return;
+        }
+
+        if (elapsed > CASCADE_STALL_GRACE_MS && currentVel < CASCADE_STALL_VELOCITY_RPM) {
+            if (cascadeResetStallStartTime == 0) {
+                cascadeResetStallStartTime = now;
+            } else if (now - cascadeResetStallStartTime >= CASCADE_STALL_CONFIRM_MS) {
+                cascadeMotors.brake();
+                cascadeMotors.tare_position();
+                isCascadeResetting = false;
+                cascadeResetComplete = true;
+                lemlib::telemetrySink()->info("Cascade encoder zeroed at the lower stop");
+                return;
+            }
+        } else {
+            cascadeResetStallStartTime = 0;
+        }
+
+        cascadeMotors.move(CASCADE_RESET_POWER);
+        return;
+    }
+
     if (dropNewPress) {
         isCascadeDropping = true;
-        cascadeDropStartTime = pros::millis();
+        cascadeDropStartTime = now;
+        cascadeDropStallStartTime = 0;
         cascadeMotors.move_absolute(CASCADE_MIN_DEGREES, CASCADE_DROP_VELOCITY);
         return;
     }
 
-    // 3. Manual Override: Holding R1 or L1 cancels an active auto-drop
     if (upHeld || downHeld) {
         isCascadeDropping = false;
+        cascadeDropStallStartTime = 0;
 
-        if (upHeld && currentPos < CASCADE_MAX_DEGREES) {
-            cascadeMotors.move(CASCADE_MANUAL_POWER);
-        } 
-        else if (downHeld && currentPos > CASCADE_MIN_DEGREES) {
-            cascadeMotors.move(-CASCADE_MANUAL_POWER);
-        } 
-        else {
+        if (upHeld == downHeld) {
+            cascadeMotors.brake();
+            return;
+        }
+
+        const double distanceToLimit = upHeld
+            ? CASCADE_MAX_DEGREES - currentPos
+            : currentPos - CASCADE_MIN_DEGREES;
+        if (distanceToLimit <= CASCADE_LIMIT_TOLERANCE_DEGREES) {
+            cascadeMotors.brake();
+            return;
+        }
+
+        const double speedScale = std::min(1.0, distanceToLimit / CASCADE_SLOWDOWN_DEGREES);
+        const int velocity = static_cast<int>(CASCADE_MANUAL_VELOCITY * speedScale);
+        cascadeMotors.move_velocity(upHeld ? velocity : -velocity);
+        return;
+    }
+
+    if (isCascadeDropping) {
+        const uint32_t elapsed = now - cascadeDropStartTime;
+        const bool reachedBottom = currentPos <= CASCADE_MIN_DEGREES + 10.0;
+        const bool timedOut = elapsed >= CASCADE_DROP_TIMEOUT_MS;
+        bool stalled = false;
+
+        if (elapsed > CASCADE_STALL_GRACE_MS && currentVel < CASCADE_STALL_VELOCITY_RPM) {
+            if (cascadeDropStallStartTime == 0) {
+                cascadeDropStallStartTime = now;
+            } else {
+                stalled = now - cascadeDropStallStartTime >= CASCADE_STALL_CONFIRM_MS;
+            }
+        } else {
+            cascadeDropStallStartTime = 0;
+        }
+
+        if (reachedBottom || timedOut || stalled) {
+            isCascadeDropping = false;
             cascadeMotors.brake();
         }
         return;
     }
 
-    // 4. Handle ongoing Auto-Drop with timeout and stall protection
-    if (isCascadeDropping) {
-        uint32_t elapsed = pros::millis() - cascadeDropStartTime;
-        double currentVel = std::abs(cascadeMotors.get_actual_velocity());
-
-        bool reachedBottom = (currentPos <= CASCADE_MIN_DEGREES + 10.0);
-        bool timedOut = (elapsed >= CASCADE_DROP_TIMEOUT_MS);
-        bool isStalled = (elapsed > CASCADE_STALL_GRACE_MS) && (currentVel < 5.0);
-
-        if (reachedBottom || timedOut || isStalled) {
-            isCascadeDropping = false;
-            cascadeMotors.brake();
-        }
-    } else {
-        cascadeMotors.brake();
-    }
+    cascadeMotors.brake();
 }
 
 
@@ -328,7 +409,7 @@ void opcontrol() {
         bool btnCascadeDown = controller.get_digital(pros::E_CONTROLLER_DIGITAL_L1);
         bool btnCascadeDrop = controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_B);
         bool btnCascadeReset = controller.get_digital(pros::E_CONTROLLER_DIGITAL_DOWN);
-        updateCascade(btnCascadeUp, btnCascadeDown, btnCascadeDrop);
+        updateCascade(btnCascadeUp, btnCascadeDown, btnCascadeDrop, btnCascadeReset);
       
         // delay to save resources
         pros::delay(10);
