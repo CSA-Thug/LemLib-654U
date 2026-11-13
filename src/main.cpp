@@ -1,6 +1,7 @@
 #include "main.h"
+#include "Omega.h"
 #include "lemlib/api.hpp" // IWYU pragma: keep
-#include "pros/screen.hpp"
+#include "liblvgl/lvgl.h"
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
@@ -99,14 +100,19 @@ void initCascade()
 
 void initialize() 
 {
-    pros::screen::erase();
-    pros::screen::print(pros::E_TEXT_MEDIUM, 1, "Initializing...");
+    const bool displayReady = pros::lcd::initialize();
+    if (!displayReady) {
+        lemlib::telemetrySink()->error("Failed to initialize the Brain display");
+    }
+
     chassis.calibrate(); // calibrate sensors
 
     ratchetClaw.set_encoder_units(pros::E_MOTOR_ENCODER_DEGREES);
     ratchetClaw.set_brake_mode(pros::E_MOTOR_BRAKE_HOLD);
 
     initCascade();
+    if (!displayReady) return;
+
     // the default rate is 50. however, if you need to change the rate, you
     // can do the following.
     // lemlib::bufferedStdout().setRate(...);
@@ -115,15 +121,56 @@ void initialize()
     // for more information on how the formatting for the loggers
     // works, refer to the fmtlib docs
 
-    // Keep the Brain screen and telemetry updated with the odometry pose.
-    pros::Task screenTask([]() 
+    lv_obj_t* const screen = lv_screen_active();
+    lv_obj_t* const omegaImage = lv_image_create(screen);
+    lv_image_set_src(omegaImage, &Omega);
+    lv_image_set_scale(omegaImage, 102); // Scale the 600 px image to approximately 240 px.
+    lv_obj_center(omegaImage);
+
+    lv_obj_t* const xLabel = lv_label_create(screen);
+    lv_obj_t* const yLabel = lv_label_create(screen);
+    lv_obj_t* const headingLabel = lv_label_create(screen);
+    lv_label_set_text(xLabel, "X: 0.0 in");
+    lv_label_set_text(yLabel, "Y: 0.0 in");
+    lv_label_set_text(headingLabel, "Heading: 0.0 deg");
+    lv_obj_set_pos(xLabel, 20, 70);
+    lv_obj_set_pos(yLabel, 20, 100);
+    lv_obj_set_pos(headingLabel, 20, 130);
+    lv_obj_add_flag(xLabel, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(yLabel, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_flag(headingLabel, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_t* const modeHint = lv_label_create(screen);
+    lv_label_set_text(modeHint, "X: Pose");
+    lv_obj_align(modeHint, LV_ALIGN_BOTTOM_RIGHT, -10, -8);
+
+    // Toggle between the Omega logo and live odometry pose with controller X.
+    pros::Task screenTask([omegaImage, xLabel, yLabel, headingLabel, modeHint]()
     {
+        bool showPose = false;
         while (true) 
         {
+            if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_X)) {
+                showPose = !showPose;
+                if (showPose) {
+                    lv_obj_add_flag(omegaImage, LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_remove_flag(xLabel, LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_remove_flag(yLabel, LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_remove_flag(headingLabel, LV_OBJ_FLAG_HIDDEN);
+                    lv_label_set_text(modeHint, "X: Omega");
+                } else {
+                    lv_obj_remove_flag(omegaImage, LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_add_flag(xLabel, LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_add_flag(yLabel, LV_OBJ_FLAG_HIDDEN);
+                    lv_obj_add_flag(headingLabel, LV_OBJ_FLAG_HIDDEN);
+                    lv_label_set_text(modeHint, "X: Pose");
+                }
+            }
+
             const lemlib::Pose pose = chassis.getPose();
-            pros::screen::print(pros::E_TEXT_MEDIUM, 1, "X: %.1f in", pose.x);
-            pros::screen::print(pros::E_TEXT_MEDIUM, 2, "Y: %.1f in", pose.y);
-            pros::screen::print(pros::E_TEXT_MEDIUM, 3, "Heading: %.1f deg", pose.theta);
+            lv_label_set_text_fmt(xLabel, "X: %.1f in", pose.x);
+            lv_label_set_text_fmt(yLabel, "Y: %.1f in", pose.y);
+            lv_label_set_text_fmt(headingLabel, "Heading: %.1f deg", pose.theta);
             lemlib::telemetrySink()->info("Chassis pose: {}", pose);
             pros::delay(100);
         }
