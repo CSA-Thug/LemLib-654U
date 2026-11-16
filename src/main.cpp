@@ -1,5 +1,4 @@
 #include "main.h"
-#include "Omega.h"
 #include "lemlib/api.hpp" // IWYU pragma: keep
 #include "liblvgl/lvgl.h"
 #include <algorithm>
@@ -122,10 +121,6 @@ void initialize()
     // works, refer to the fmtlib docs
 
     lv_obj_t* const screen = lv_screen_active();
-    lv_obj_t* const omegaImage = lv_image_create(screen);
-    lv_image_set_src(omegaImage, &Omega);
-    lv_image_set_scale(omegaImage, 102); // Scale the 600 px image to approximately 240 px.
-    lv_obj_center(omegaImage);
 
     lv_obj_t* const xLabel = lv_label_create(screen);
     lv_obj_t* const yLabel = lv_label_create(screen);
@@ -136,37 +131,11 @@ void initialize()
     lv_obj_set_pos(xLabel, 20, 70);
     lv_obj_set_pos(yLabel, 20, 100);
     lv_obj_set_pos(headingLabel, 20, 130);
-    lv_obj_add_flag(xLabel, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(yLabel, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_add_flag(headingLabel, LV_OBJ_FLAG_HIDDEN);
 
-    lv_obj_t* const modeHint = lv_label_create(screen);
-    lv_label_set_text(modeHint, "X: Pose");
-    lv_obj_align(modeHint, LV_ALIGN_BOTTOM_RIGHT, -10, -8);
-
-    // Toggle between the Omega logo and live odometry pose with controller X.
-    pros::Task screenTask([omegaImage, xLabel, yLabel, headingLabel, modeHint]()
+    pros::Task screenTask([xLabel, yLabel, headingLabel]()
     {
-        bool showPose = false;
         while (true) 
         {
-            if (controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_X)) {
-                showPose = !showPose;
-                if (showPose) {
-                    lv_obj_add_flag(omegaImage, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_remove_flag(xLabel, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_remove_flag(yLabel, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_remove_flag(headingLabel, LV_OBJ_FLAG_HIDDEN);
-                    lv_label_set_text(modeHint, "X: Omega");
-                } else {
-                    lv_obj_remove_flag(omegaImage, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_add_flag(xLabel, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_add_flag(yLabel, LV_OBJ_FLAG_HIDDEN);
-                    lv_obj_add_flag(headingLabel, LV_OBJ_FLAG_HIDDEN);
-                    lv_label_set_text(modeHint, "X: Pose");
-                }
-            }
-
             const lemlib::Pose pose = chassis.getPose();
             lv_label_set_text_fmt(xLabel, "X: %.1f in", pose.x);
             lv_label_set_text_fmt(yLabel, "Y: %.1f in", pose.y);
