@@ -592,7 +592,7 @@
       }
     },
     "upload_options": {
-      "description": "DRIVER CONTROL",
+      "description": "Main Branch",
       "icon": "pros"
     },
     "use_early_access": false
