@@ -75,6 +75,9 @@ void opcontrol(void);
  * You can add C++-only headers here
  */
 //#include <iostream>
+void initCascade(void);
+void updateRatchetClaw(bool intakeHeld, bool releaseNewPress);
+void updateCascade(bool upHeld, bool downHeld, bool dropNewPress);
 #endif
 
 #endif  // _PROS_MAIN_H_
