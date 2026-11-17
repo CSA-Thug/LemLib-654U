@@ -22,11 +22,14 @@ pros::Imu imu(15);
 // horizontal tracking wheel encoder. Rotation sensor on port 6, not reversed.
 pros::Rotation horizontalEnc(6);
 // vertical tracking wheel encoder. Rotation sensor on port 5, not reversed.
-pros::Rotation verticalEnc(5);
+
+//pros::Rotation verticalEnc(5);
+
 // horizontal tracking wheel. 2.75" diameter, 5.75" offset behind the robot center (negative).
 lemlib::TrackingWheel horizontal(&horizontalEnc, lemlib::Omniwheel::NEW_275, -5.75);
 // vertical tracking wheel. 2.75" diameter, 2.5" offset left of the robot center (negative).
-lemlib::TrackingWheel vertical(&verticalEnc, lemlib::Omniwheel::NEW_275, -2.5);
+
+//lemlib::TrackingWheel vertical(&verticalEnc, lemlib::Omniwheel::NEW_275, -2.5);
 
 // drivetrain settings
 lemlib::Drivetrain drivetrain(&leftMotors, // left motor group
@@ -164,9 +167,9 @@ void autonomous()
 // The intake runs while held; tune the bounded release travel to stop before the physical
 // opening stoppers.
 const int CLAW_INTAKE_POWER = 108;
-const int CLAW_OPEN_SPEED_RPM = 127;
+const int CLAW_OPEN_SPEED_RPM = 90;
 const int CLAW_INTAKE_DIRECTION = 1; // Change to -1 if the claw motor is reversed.
-const double CLAW_OPEN_TRAVEL_DEGREES = 300.0;
+const double CLAW_OPEN_TRAVEL_DEGREES = 275.0;
 const double CLAW_OPEN_TOLERANCE_DEGREES = 5.0;
 const uint32_t CLAW_OPEN_TIMEOUT_MS = 750;
 const uint32_t CLAW_STALL_GRACE_MS = 100;
@@ -259,10 +262,10 @@ void updateRatchetClaw(bool intakeHeld, bool releaseNewPress)
 
 // Cascade lift control constants and state tracking.
 const int CASCADE_MANUAL_VELOCITY = 450;
-const int CASCADE_DROP_VELOCITY = 450;
+const int CASCADE_DROP_VELOCITY = 400;
 const int CASCADE_RESET_POWER = -40; // Slow downward power for re-zeroing.
 const double CASCADE_MIN_DEGREES = 0.0;
-const double CASCADE_MAX_DEGREES = 1500.0;
+const double CASCADE_MAX_DEGREES = 2000.0;
 const double CASCADE_SLOWDOWN_DEGREES = 150.0;
 const double CASCADE_LIMIT_TOLERANCE_DEGREES = 5.0;
 const uint32_t CASCADE_DROP_TIMEOUT_MS = 1500;
