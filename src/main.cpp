@@ -8,12 +8,12 @@
 // controller
 pros::Controller controller(pros::E_CONTROLLER_MASTER);
 
-pros::Motor ratchetClaw(13, pros::MotorGearset::green);
+pros::Motor ratchetClaw(14, pros::MotorGearset::green);
 
-pros::MotorGroup cascadeMotors({8, 19}, pros::MotorGearset::blue);
+pros::MotorGroup cascadeMotors({13, 4}, pros::MotorGearset::blue);
 
-pros::MotorGroup leftMotors({2, 3, 10}, pros::MotorGearset::blue);
-pros::MotorGroup rightMotors({-11, -12, -20}, pros::MotorGearset::blue);
+pros::MotorGroup leftMotors({11, 19, -20}, pros::MotorGearset::blue);
+pros::MotorGroup rightMotors({2, -9, -10}, pros::MotorGearset::blue);
 // Inertial Sensor on port 15
 pros::Imu imu(15);
 
@@ -100,9 +100,6 @@ void initCascade()
 void initialize() 
 {
     const bool displayReady = pros::lcd::initialize();
-    if (!displayReady) {
-        lemlib::telemetrySink()->error("Failed to initialize the Brain display");
-    }
 
     chassis.calibrate(); // calibrate sensors
 
@@ -111,14 +108,6 @@ void initialize()
 
     initCascade();
     if (!displayReady) return;
-
-    // the default rate is 50. however, if you need to change the rate, you
-    // can do the following.
-    // lemlib::bufferedStdout().setRate(...);
-    // If you use bluetooth or a wired connection, you will want to have a rate of 10ms
-
-    // for more information on how the formatting for the loggers
-    // works, refer to the fmtlib docs
 
     lv_obj_t* const screen = lv_screen_active();
 
@@ -140,7 +129,6 @@ void initialize()
             lv_label_set_text_fmt(xLabel, "X: %.1f in", pose.x);
             lv_label_set_text_fmt(yLabel, "Y: %.1f in", pose.y);
             lv_label_set_text_fmt(headingLabel, "Heading: %.1f deg", pose.theta);
-            lemlib::telemetrySink()->info("Chassis pose: {}", pose);
             pros::delay(100);
         }
     });
@@ -217,9 +205,6 @@ void updateRatchetClaw(bool intakeHeld, bool releaseNewPress)
             clawState = ClawState::Idle;
             if (reachedOpenLimit) {
                 clawNeedsOpening = false;
-                lemlib::telemetrySink()->info("Claw release completed");
-            } else {
-                lemlib::telemetrySink()->warn("Claw release timed out before reaching its target");
             }
             return;
         }
@@ -259,7 +244,6 @@ void updateRatchetClaw(bool intakeHeld, bool releaseNewPress)
             ratchetClaw.brake();
             clawState = ClawState::Idle;
             clawIntakeStalled = true;
-            lemlib::telemetrySink()->warn("Claw intake stopped after a stall");
             return;
         }
 
@@ -315,7 +299,6 @@ void updateCascade(bool upHeld, bool downHeld, bool dropNewPress, bool resetHeld
             isCascadeResetting = true;
             cascadeResetStartTime = now;
             cascadeResetStallStartTime = 0;
-            lemlib::telemetrySink()->info("Cascade reset started");
         }
 
         const uint32_t elapsed = now - cascadeResetStartTime;
@@ -323,7 +306,6 @@ void updateCascade(bool upHeld, bool downHeld, bool dropNewPress, bool resetHeld
             cascadeMotors.brake();
             isCascadeResetting = false;
             cascadeResetComplete = true;
-            lemlib::telemetrySink()->warn("Cascade reset timed out without detecting the lower stop");
             return;
         }
 
@@ -335,7 +317,6 @@ void updateCascade(bool upHeld, bool downHeld, bool dropNewPress, bool resetHeld
                 cascadeMotors.tare_position();
                 isCascadeResetting = false;
                 cascadeResetComplete = true;
-                lemlib::telemetrySink()->info("Cascade encoder zeroed at the lower stop");
                 return;
             }
         } else {
