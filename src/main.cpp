@@ -65,7 +65,7 @@ lemlib::ControllerSettings angularController(2, // proportional gain (kP)
 );
 
 // sensors for odometry
-lemlib::OdomSensors sensors(&vertical, // vertical tracking wheel
+lemlib::OdomSensors sensors(nullptr, // no vertical tracking wheel
                             nullptr, // secondary vertical tracking wheel, not used
                             &horizontal, // horizontal tracking wheel
                             nullptr, // secondary horizontal tracking wheel, not used
@@ -167,7 +167,7 @@ void autonomous()
 // The intake runs while held; tune the bounded release travel to stop before the physical
 // opening stoppers.
 const int CLAW_INTAKE_POWER = 108;
-const int CLAW_OPEN_SPEED_RPM = 90;
+const int CLAW_OPEN_SPEED_RPM = 80;
 const int CLAW_INTAKE_DIRECTION = 1; // Change to -1 if the claw motor is reversed.
 const double CLAW_OPEN_TRAVEL_DEGREES = 275.0;
 const double CLAW_OPEN_TOLERANCE_DEGREES = 5.0;
@@ -263,13 +263,11 @@ void updateRatchetClaw(bool intakeHeld, bool releaseNewPress)
 // Cascade lift control constants and state tracking.
 const int CASCADE_MANUAL_VELOCITY = 450;
 const int CASCADE_DROP_VELOCITY = 400;
-const int CASCADE_RESET_POWER = -40; // Slow downward power for re-zeroing.
 const double CASCADE_MIN_DEGREES = 0.0;
 const double CASCADE_MAX_DEGREES = 2000.0;
 const double CASCADE_SLOWDOWN_DEGREES = 150.0;
 const double CASCADE_LIMIT_TOLERANCE_DEGREES = 5.0;
 const uint32_t CASCADE_DROP_TIMEOUT_MS = 1500;
-const uint32_t CASCADE_RESET_TIMEOUT_MS = 3000;
 const uint32_t CASCADE_STALL_GRACE_MS = 150;
 const uint32_t CASCADE_STALL_CONFIRM_MS = 100;
 const double CASCADE_STALL_VELOCITY_RPM = 5.0;
@@ -277,58 +275,12 @@ const double CASCADE_STALL_VELOCITY_RPM = 5.0;
 bool isCascadeDropping = false;
 uint32_t cascadeDropStartTime = 0;
 uint32_t cascadeDropStallStartTime = 0;
-bool isCascadeResetting = false;
-bool cascadeResetComplete = false;
-uint32_t cascadeResetStartTime = 0;
-uint32_t cascadeResetStallStartTime = 0;
 
-void updateCascade(bool upHeld, bool downHeld, bool dropNewPress, bool resetHeld)
+void updateCascade(bool upHeld, bool downHeld, bool dropNewPress)
 {
     const uint32_t now = pros::millis();
     const double currentPos = cascadeMotors.get_position();
     const double currentVel = std::abs(cascadeMotors.get_actual_velocity());
-
-    if (!resetHeld) {
-        isCascadeResetting = false;
-        cascadeResetComplete = false;
-        cascadeResetStallStartTime = 0;
-    } else {
-        isCascadeDropping = false;
-        if (cascadeResetComplete) {
-            cascadeMotors.brake();
-            return;
-        }
-        if (!isCascadeResetting) {
-            isCascadeResetting = true;
-            cascadeResetStartTime = now;
-            cascadeResetStallStartTime = 0;
-        }
-
-        const uint32_t elapsed = now - cascadeResetStartTime;
-        if (elapsed >= CASCADE_RESET_TIMEOUT_MS) {
-            cascadeMotors.brake();
-            isCascadeResetting = false;
-            cascadeResetComplete = true;
-            return;
-        }
-
-        if (elapsed > CASCADE_STALL_GRACE_MS && currentVel < CASCADE_STALL_VELOCITY_RPM) {
-            if (cascadeResetStallStartTime == 0) {
-                cascadeResetStallStartTime = now;
-            } else if (now - cascadeResetStallStartTime >= CASCADE_STALL_CONFIRM_MS) {
-                cascadeMotors.brake();
-                cascadeMotors.tare_position();
-                isCascadeResetting = false;
-                cascadeResetComplete = true;
-                return;
-            }
-        } else {
-            cascadeResetStallStartTime = 0;
-        }
-
-        cascadeMotors.move(CASCADE_RESET_POWER);
-        return;
-    }
 
     if (dropNewPress) {
         isCascadeDropping = true;
@@ -408,8 +360,7 @@ void opcontrol() {
         bool btnCascadeUp = controller.get_digital(pros::E_CONTROLLER_DIGITAL_R1);
         bool btnCascadeDown = controller.get_digital(pros::E_CONTROLLER_DIGITAL_L1);
         bool btnCascadeDrop = controller.get_digital_new_press(pros::E_CONTROLLER_DIGITAL_B);
-        bool btnCascadeReset = controller.get_digital(pros::E_CONTROLLER_DIGITAL_DOWN);
-        updateCascade(btnCascadeUp, btnCascadeDown, btnCascadeDrop, btnCascadeReset);
+        updateCascade(btnCascadeUp, btnCascadeDown, btnCascadeDrop);
       
         // delay to save resources
         pros::delay(10);
