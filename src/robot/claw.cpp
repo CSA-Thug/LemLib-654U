@@ -10,7 +10,7 @@ extern pros::Motor ratchetClaw;
 const int CLAW_INTAKE_POWER = 108;
 const int CLAW_OPEN_SPEED_RPM = 80;
 const int CLAW_INTAKE_DIRECTION = 1; // Change to -1 if the claw motor is reversed.
-const double CLAW_OPEN_TRAVEL_DEGREES = 275.0;
+const double CLAW_OPEN_TRAVEL_DEGREES = 4;
 const double CLAW_OPEN_TOLERANCE_DEGREES = 5.0;
 const uint32_t CLAW_OPEN_TIMEOUT_MS = 750;
 const uint32_t CLAW_STALL_GRACE_MS = 100;
